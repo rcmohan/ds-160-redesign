@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Option 1 — Forgiving Wizard</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<div id="chrome"></div>
+<div id="app-wrap"><div id="app"></div></div>
+<div id="footer"></div>
+<script src="shared/app.js"></script>
+<script src="shared/metrics.js"></script>
+<script>
+/* Option 1: one section at a time. Back never validates; Next validates but lets the user continue. */
+const { h } = App;
+const REVIEW = SECTIONS.length;                 // step index of the Review page
+const root = document.getElementById("app");
+let resumed = App.init("option1");
+let banner = null, submitted = false;
+if (typeof App.meta.step !== "number") App.meta.step = 0;
+
+App.chrome("Design Option 1");
+Metrics.init("option1");
+const indicator = App.saveIndicator();
+const exitBtn = h("button", { class: "link", style: "color:#fff", onclick: saveAndExit }, "Save and Exit");
+document.getElementById("utilslot").append(exitBtn);
+
+/* ---- simulated session timeout (2 min of inactivity) ---- */
+let idle;
+function resetIdle() { clearTimeout(idle); idle = setTimeout(showTimeout, 120000); }
+["click", "keydown", "input"].forEach(e => document.addEventListener(e, resetIdle));
+function showTimeout() {
+  if (document.querySelector(".scrim") || App.meta.exited) return;
+  let n = 60;
+  const msg = h("p", {}, "For your security, your session will expire in " + n + " seconds. Your answers so far have been saved.");
+  const tick = setInterval(() => { n--; msg.textContent = "For your security, your session will expire in " + n + " seconds. Your answers so far have been saved."; if (n <= 0) { clearInterval(tick); close(); saveAndExit(); } }, 1000);
+  const scrim = h("div", { class: "scrim" }, h("div", { class: "modal", role: "alertdialog", "aria-labelledby": "tt" },
+    h("h3", { id: "tt" }, "Your session is about to expire"), msg,
+    h("div", { class: "btnbar" },
+      h("button", { class: "rbtn c", onclick: () => { clearInterval(tick); close(); resetIdle(); } }, "Continue Working"),
+      h("button", { class: "rbtn c", onclick: () => { clearInterval(tick); close(); saveAndExit(); } }, "Save and Exit"))));
+  function close() { scrim.remove(); }
+  document.body.append(scrim);
+}
+
+function saveAndExit() {
+  App.meta.savedAt = App.now(); App.meta.exited = true; App.save();
+  render();
+}
+function resume() { Metrics.returned(); App.meta.exited = false; resumed = true; banner = { type: "info", text: "Welcome back. Your saved draft was restored at " + SECTIONS[Math.min(App.meta.step, REVIEW - 1)].title + "." }; App.save(); render(); }
+
+function go(step, fieldId) {
+  Metrics.nav(); if (step < REVIEW) Metrics.view(SECTIONS[step].id);
+  App.meta.step = step; App.state.showMissing = false; banner = null; App.save();
+  render();
+  window.scrollTo(0, 0);
+  if (fieldId) setTimeout(() => App.jump(fieldId), 50);
+}
+const stepName = i => i === REVIEW ? "Review" : SECTIONS[i].short;
+
+function render() {
+  root.innerHTML = "";
+  if (App.meta.exited) {
+    root.append(h("div", { class: "main", style: "padding:40px 24px" },
+      h("h2", { class: "title" }, "Your application has been saved"),
+      h("div", { class: "note" }, "Your draft was saved at " + App.meta.savedAt + ". You can return at any time and continue where you left off."),
+      h("button", { class: "rbtn auto", style: "padding:10px 24px", onclick: resume }, "Resume Saved Application")));
+    return;
+  }
+  const step = App.meta.step;
+  const side = h("nav", { class: "side", "aria-label": "Application sections" });
+  const main = h("div", { class: "main" });
+  root.append(h("div", { class: "shell" }, side, main));
+  App.state.onChange = () => { drawForm(); drawNav(); };
+  App.state.onInput = drawNav;
+
+  function drawNav() {
+    side.innerHTML = "";
+    const ul = h("ul", { class: "nav" });
+    SECTIONS.forEach((s, i) => {
+      const st = App.stats(s).status;
+      ul.append(h("li", {}, h("button", { class: (st === "done" ? "" : st === "part" ? "part" : "todo") + (i === step ? " cur" : ""), onclick: () => go(i), "aria-current": i === step ? "step" : null },
+        h("span", { class: "ic" }, st === "done" ? "✔" : st === "part" ? "●" : ""), s.short, i === step ? " ▸" : "")));
+    });
+    ul.append(h("li", {}, h("button", { class: "todo" + (step === REVIEW ? " cur" : ""), onclick: () => go(REVIEW) }, h("span", { class: "ic" }), "Review")));
+    side.append(ul, h("div", { class: "sidehelp" }, h("b", {}, "Help: Navigation Buttons"), h("div", {}, "Click on the buttons above to access previously entered data.")));
+  }
+
+  function drawForm() {
+    main.innerHTML = "";
+    main.append(h("div", { class: "statusbar" }, indicator, h("span", { style: "color:#666" }, "Page " + (step + 1) + " of " + (REVIEW + 1))));
+    if (banner) main.append(h("div", { class: "banner", role: "status" }, banner.text, banner.actions || null));
+
+    if (step === REVIEW) return drawReview();
+    const s = SECTIONS[step];
+    main.append(h("h2", { class: "title" }, s.title));
+    if (s.note) main.append(h("div", { class: "note" }, "NOTE: " + s.note));
+    const box = h("div", { class: "panel" });
+    main.append(box);
+    App.renderSection(box, s, { flagText: "This question is required before you submit." });
+    const next = step + 1;
+    main.append(h("div", { class: "btnbar" },
+      h("button", { class: "rbtn l", disabled: step === 0, onclick: () => go(step - 1) }, "◀ Back: " + (step === 0 ? "Start" : stepName(step - 1))),
+      h("button", { class: "rbtn c", onclick: () => { App.meta.savedAt = App.now(); App.save(); } }, "💾 Save"),
+      h("button", { class: "rbtn r", onclick: () => tryNext(s, next) }, "Next: " + stepName(next) + " ▶")));
+  }
+
+  function tryNext(s, next) {
+    const miss = App.stats(s).missing;
+    if (!miss.length) return go(next);
+    Metrics.validation();
+    App.state.showMissing = true;
+    banner = { text: miss.length + " required question" + (miss.length > 1 ? "s" : "") + " on this page " + (miss.length > 1 ? "are" : "is") + " unanswered. You can continue and come back to " + (miss.length > 1 ? "them" : "it") + " later.",
+      actions: h("span", { style: "margin-left:auto;display:flex;gap:8px" },
+        h("button", { class: "sbtn", onclick: () => { App.state.showMissing = false; banner = null; go(next); } }, "Continue anyway"),
+        h("button", { class: "sbtn fill", onclick: () => { banner = null; drawForm(); } }, "Stay on this page")) };
+    drawForm();
+    App.jump(miss[0].id);
+  }
+
+  function drawReview() {
+    main.append(h("h2", { class: "title" }, "Review"));
+    main.append(h("div", { class: "note" }, "NOTE: Review each section. Select any section to correct an answer."));
+    const box = h("div", { class: "panel" });
+    SECTIONS.forEach((s, i) => {
+      const st = App.stats(s);
+      box.append(h("div", { class: "row nohelp" }, h("div", {},
+        h("div", { style: "display:flex;gap:10px;align-items:center" }, h("b", { style: "font:18px Georgia,serif" }, s.title),
+          h("span", { class: "badge " + st.status }, App.label[st.status]), h("button", { class: "link", style: "margin-left:auto", onclick: () => go(i) }, "Edit this section")),
+        st.missing.length ? h("ul", { style: "margin:8px 0 0" }, st.missing.map(f => h("li", {}, f.label + " ", h("button", { class: "link", onclick: () => go(i, f.id) }, "Answer")))) : null),
+        h("aside", { class: "help" })));
+    });
+    main.append(box);
+    const pend = App.pendingAll().length;
+    if (submitted) main.append(h("div", { class: "banner", style: "margin-top:12px" }, "Simulated submission complete. No data was sent anywhere."));
+    main.append(h("div", { class: "btnbar" },
+      h("button", { class: "rbtn l", onclick: () => go(REVIEW - 1) }, "◀ Back: " + stepName(REVIEW - 1)),
+      h("button", { class: "rbtn c", onclick: () => { App.meta.savedAt = App.now(); App.save(); } }, "💾 Save"),
+      h("button", { class: "rbtn r", onclick: () => {
+        if (pend) { Metrics.validation(); banner = { text: pend + " required question" + (pend > 1 ? "s are" : " is") + " still unanswered. Select a question above to complete it." }; submitted = false; drawForm(); window.scrollTo(0, 0); }
+        else { submitted = true; banner = null; drawForm(); } } }, "Submit Application ▶")));
+  }
+  drawNav(); drawForm();
+}
+if (resumed && !App.meta.exited && App.meta.step > 0) banner = { text: "Resumed your saved draft at " + (App.meta.step === REVIEW ? "Review" : SECTIONS[App.meta.step].title) + "." };
+render(); resetIdle();
+if (App.meta.step < REVIEW && !App.meta.exited) Metrics.view(SECTIONS[App.meta.step].id);
+</script>
+</body>
+</html>

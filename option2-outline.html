@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Option 2 — Single Page with Outline</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<div id="chrome"></div>
+<div id="app-wrap"><div id="app"></div></div>
+<div id="footer"></div>
+<script src="shared/app.js"></script>
+<script src="shared/metrics.js"></script>
+<script>
+/* Option 2: every section on one page in collapsible panels, a persistent outline, and search. */
+const { h } = App;
+const root = document.getElementById("app");
+App.init("option2");
+App.chrome("Design Option 2");
+Metrics.init("option2");
+const indicator = App.saveIndicator();
+
+if (!App.meta.open) { App.meta.open = {}; SECTIONS.forEach(s => App.meta.open[s.id] = App.stats(s).status !== "done"); }
+let hit = new Set(), reviewing = false, submitted = false;
+
+const outline = h("nav", { class: "side", "aria-label": "Application outline" });
+const main = h("div", { class: "main" });
+root.append(h("div", { class: "shell" }, outline, main));
+
+const searchInput = h("input", { type: "text", id: "q", placeholder: "Type to search all questions and answers", autocomplete: "off", "aria-label": "Find a question or answer" });
+const results = h("div", { class: "results", hidden: true });
+const reviewBox = h("div");
+const panelsBox = h("div");
+const bodies = {}, heads = {};
+
+main.append(
+  h("div", { class: "statusbar" }, indicator, h("span", { style: "color:#666" }, "Sections can be completed in any order.")),
+  h("div", { class: "search" }, h("label", { class: "lbl", for: "q", style: "font-weight:700" }, "Find a question or answer"), searchInput, results),
+  h("h2", { class: "title" }, "Online Nonimmigrant Visa Application"),
+  reviewBox, panelsBox,
+  h("div", { class: "btnbar" },
+    h("button", { class: "rbtn c", onclick: () => App.save() }, "💾 Save"),
+    h("button", { class: "rbtn c", style: "flex:1", onclick: startReview }, "Review and Submit ▶")));
+
+/* ---- panels ---- */
+SECTIONS.forEach(s => {
+  const body = h("div", { class: "cbody" });
+  const head = h("button", { class: "chead", id: "head_" + s.id, "aria-expanded": "false", onclick: () => toggle(s.id) });
+  bodies[s.id] = body; heads[s.id] = head;
+  const panel = h("section", { class: "cpanel", id: "sec_" + s.id }, h("h3", { style: "margin:0" }, head), body);
+  panelsBox.append(panel);
+});
+function drawPanel(s) {
+  const open = !!App.meta.open[s.id], st = App.stats(s);
+  const head = heads[s.id];
+  head.setAttribute("aria-expanded", open);
+  head.innerHTML = "";
+  head.append(h("span", { class: "caret" }, open ? "▼" : "▶"), s.title, h("span", { class: "badge " + st.status }, App.label[st.status] + (st.missing.length ? " (" + st.missing.length + " to answer)" : "")));
+  bodies[s.id].hidden = !open;
+  if (open) {
+    bodies[s.id].innerHTML = "";
+    if (s.note) bodies[s.id].append(h("div", { class: "note" }, "NOTE: " + s.note));
+    const box = h("div", { class: "panel" });
+    bodies[s.id].append(box);
+    App.renderSection(box, s, { hit, flagText: "This question is required." });
+  }
+}
+function drawOutline() {
+  outline.innerHTML = "";
+  const o = App.overall();
+  outline.append(h("div", { style: "font-size:13px;color:#444" }, o.pct + "% of required questions answered"), h("div", { class: "progress" }, h("i", { style: "width:" + o.pct + "%" })));
+  const ul = h("ul", { class: "nav" });
+  SECTIONS.forEach(s => {
+    const st = App.stats(s).status;
+    ul.append(h("li", {}, h("button", { class: st === "done" ? "" : st === "part" ? "part" : "todo", onclick: () => open(s.id) },
+      h("span", { class: "ic" }, st === "done" ? "✔" : st === "part" ? "●" : ""), h("span", { style: "flex:1" }, s.short), h("span", { style: "font-weight:400;font-size:11px" }, App.label[st]))));
+  });
+  outline.append(ul,
+    h("div", { style: "display:flex;gap:6px;margin-top:12px" },
+      h("button", { class: "sbtn", onclick: () => setAll(true) }, "Expand all"), h("button", { class: "sbtn", onclick: () => setAll(false) }, "Collapse all")),
+    h("button", { class: "rbtn", style: "width:100%;margin-top:12px", onclick: startReview }, "Review and Submit"));
+}
+function drawAll() { SECTIONS.forEach(drawPanel); drawOutline(); drawReview(); }
+function toggle(id) { Metrics.nav(); App.meta.open[id] = !App.meta.open[id]; if (App.meta.open[id]) Metrics.view(id); App.save(); drawPanel(SECTIONS.find(s => s.id === id)); }
+function setAll(v) { Metrics.nav(); SECTIONS.forEach(s => App.meta.open[s.id] = v); App.save(); drawAll(); }
+function open(id, fieldId) {
+  Metrics.nav(); Metrics.view(id);
+  App.meta.open[id] = true; drawAll();
+  if (fieldId) setTimeout(() => App.jump(fieldId), 40);
+  else document.getElementById("sec_" + id).scrollIntoView({ behavior: "smooth", block: "start" });
+}
+App.state.onChange = drawAll;
+App.state.onInput = () => { drawOutline(); SECTIONS.forEach(s => { const st = App.stats(s); const b = heads[s.id].querySelector(".badge"); if (b) { b.className = "badge " + st.status; b.textContent = App.label[st.status] + (st.missing.length ? " (" + st.missing.length + " to answer)" : ""); } }); if (reviewing) drawReview(); };
+
+/* ---- search ---- */
+function runSearch(jumpFirst) {
+  const q = searchInput.value.trim();
+  results.innerHTML = "";
+  if (!q) { results.hidden = true; hit = new Set(); drawAll(); return; }
+  const r = App.search(q);
+  results.hidden = false;
+  if (!r.length) { results.append(h("div", { class: "none" }, "No matching questions or answers.")); hit = new Set(); return; }
+  r.slice(0, 8).forEach(x => {
+    const ans = App.answerText(x.field);
+    results.append(h("button", { onclick: () => { hit = new Set([x.field.id]); results.hidden = true; open(x.section.id, x.field.id); } },
+      x.field.label, h("br"), h("small", {}, x.section.title + (ans ? " · Answer: " + ans : " · Not answered"))));
+  });
+  if (jumpFirst) {
+    const top = r[0].score; const tops = r.filter(x => x.score === top);
+    hit = new Set(tops.map(x => x.field.id));
+    Metrics.nav(); tops.forEach(x => { App.meta.open[x.section.id] = true; Metrics.view(x.section.id); });
+    results.hidden = true; drawAll(); setTimeout(() => App.jump(tops[0].field.id), 40);
+  }
+}
+searchInput.addEventListener("input", () => runSearch(false));
+searchInput.addEventListener("keydown", e => { if (e.key === "Enter") runSearch(true); if (e.key === "Escape") { results.hidden = true; } });
+document.addEventListener("click", e => { if (!e.target.closest(".search")) results.hidden = true; });
+
+/* ---- review and submit ---- */
+function startReview() {
+  Metrics.nav(); if (App.pendingAll().length) Metrics.validation();
+  reviewing = true; submitted = false; App.state.showMissing = true;
+  SECTIONS.forEach(s => { if (App.stats(s).missing.length) App.meta.open[s.id] = true; });
+  drawAll(); reviewBox.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function drawReview() {
+  reviewBox.innerHTML = "";
+  if (!reviewing) return;
+  const pend = App.pendingAll();
+  const box = h("div", { class: "panel", style: "margin-bottom:14px;border-left:5px solid var(--red)" },
+    h("div", { style: "display:flex;align-items:center" }, h("h3", { style: "font:22px Georgia,serif;margin:0" }, "Review and Submit"),
+      h("button", { class: "link", style: "margin-left:auto", onclick: () => { reviewing = false; App.state.showMissing = false; drawAll(); } }, "Close review")));
+  if (!pend.length) box.append(h("p", {}, "All required questions are answered."));
+  else {
+    box.append(h("p", {}, pend.length + " required question" + (pend.length > 1 ? "s" : "") + " still need an answer:"));
+    SECTIONS.forEach(s => {
+      const m = App.stats(s).missing; if (!m.length) return;
+      box.append(h("div", { style: "margin:6px 0" }, h("b", {}, s.title), h("ul", { style: "margin:4px 0" }, m.map(f => h("li", {}, f.label + " ", h("button", { class: "link", onclick: () => open(s.id, f.id) }, "Go to question"))))));
+    });
+  }
+  box.append(h("button", { class: "rbtn auto", style: "padding:8px 20px;margin-top:8px", onclick: () => { submitted = !pend.length; if (pend.length) { drawReview(); } else { drawReview(); } } }, "Submit Application"));
+  if (submitted) box.append(h("p", { style: "color:var(--ok);font-weight:700" }, "Simulated submission complete. No data was sent anywhere."));
+  else if (pend.length) box.append(h("p", { style: "color:var(--red)" }, "Submission is unavailable until the required questions above are answered."));
+  reviewBox.append(box);
+}
+drawAll();
+SECTIONS.forEach(s => { if (App.meta.open[s.id]) Metrics.view(s.id); });
+</script>
+</body>
+</html>

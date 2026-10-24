@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DS-160 Usability Redesign — HCI Prototype</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<div class="proto-banner">Academic Usability Prototype &mdash; Not a Government Website. Fictional applicant data only.</div>
+<div class="hdr" style="max-width:1440px;margin:0 auto"><div class="logo">LOGO</div><div><h1>Consular Electronic Application Center</h1><small>U.S. DEPARTMENT of STATE</small></div></div>
+<main class="landing" style="max-width:1440px;margin:0 auto">
+  <h1>DS-160 Usability Redesign — HCI Prototype</h1>
+  <p style="font-size:17px;max-width:760px">This prototype explores three alternative ways to improve the experience of completing a long government form across multiple sessions.</p>
+  <div class="cards" id="cards"></div>
+  <p style="margin-top:28px;font-size:13px"><button class="link" id="finish">Finish study and copy combined results</button></p>
+</main>
+<script src="shared/metrics.js"></script>
+<script>
+/* Card order is shuffled once per browser and then kept, so a participant sees a stable order on every visit.
+   Researcher reset: open index.html?reset=1 (clears order and all saved answers). */
+const DESIGNS = [
+  { n: 1, href: "option1-wizard.html", title: "Forgiving Wizard", text: "Sequential pages with improved navigation, autosave feedback, and error tolerance." },
+  { n: 2, href: "option2-outline.html", title: "Single Page with Outline", text: "A consolidated form with collapsible sections, a persistent outline, and search." },
+  { n: 3, href: "option3-hub.html", title: "Section Hub with Pending Items", text: "A dashboard organized around incomplete sections and questions requiring additional information." },
+];
+const OKEY = "ds160-order";
+try {
+  if (new URLSearchParams(location.search).has("reset")) {
+    Object.keys(localStorage).filter(k => k.startsWith("ds160-")).forEach(k => localStorage.removeItem(k));
+    history.replaceState(null, "", location.pathname);
+  }
+} catch (e) {}
+let order = null;
+try { order = JSON.parse(localStorage.getItem(OKEY) || "null"); } catch (e) {}
+if (!Array.isArray(order) || order.length !== 3) {
+  order = [1, 2, 3];
+  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  try { localStorage.setItem(OKEY, JSON.stringify(order)); } catch (e) {}
+}
+document.getElementById("finish").onclick = () => Metrics.showSummary(Metrics.combined(), "Combined study results");
+const box = document.getElementById("cards");
+order.forEach(n => {
+  const d = DESIGNS.find(x => x.n === n);
+  const a = document.createElement("a");
+  a.className = "card"; a.href = d.href;
+  a.innerHTML = '<span class="num">Design Option ' + d.n + '</span><h3>' + d.title + '</h3><div class="meta">' + d.text + '</div>';
+  box.append(a);
+});
+</script>
+</body>
+</html>

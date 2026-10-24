@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Option 3 — Section Hub with Pending Items</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body>
+<div id="chrome"></div>
+<div id="app-wrap"><div id="app"></div></div>
+<div id="footer"></div>
+<script src="shared/app.js"></script>
+<script src="shared/metrics.js"></script>
+<script>
+/* Option 3: hub of section cards + "Information I Still Need" task list. */
+const { h } = App;
+const root = document.getElementById("app");
+App.init("option3");
+App.chrome("Design Option 3");
+Metrics.init("option3");
+const indicator = App.saveIndicator();
+const L = App.answers._later;                    // { fieldId: { note, resolved } }
+let view = "hub", current = null, editing = null, flash = null;
+
+const laterOpen = f => L[f.id] && !L[f.id].resolved;
+function go(v, sectionId, fieldId) {
+  Metrics.nav(); if (v === "section") Metrics.view(sectionId);
+  view = v; current = sectionId || null; editing = null; App.state.showMissing = false; render(); window.scrollTo(0, 0);
+  if (fieldId) setTimeout(() => App.jump(fieldId), 50);
+}
+App.state.onChange = () => render(true);
+App.state.onInput = () => {};
+
+function topbar() {
+  return h("div", { class: "topnav" },
+    h("button", { class: "sbtn" + (view === "hub" ? " fill" : ""), onclick: () => go("hub") }, "⌂ Section Hub"),
+    h("button", { class: "sbtn" + (view === "needs" ? " fill" : ""), onclick: () => go("needs") }, "Information I Still Need (" + needsCount() + ")"),
+    h("span", { style: "margin-left:auto" }, indicator));
+}
+const needsCount = () => Object.keys(L).filter(id => !L[id].resolved).length;
+
+function render(keepScroll) {
+  const y = window.scrollY;
+  root.innerHTML = "";
+  const main = h("div", { class: "main", style: "padding:0 24px 30px" });
+  root.append(main);
+  main.append(topbar());
+  if (view === "hub") hub(main); else if (view === "needs") needs(main); else section(main);
+  if (keepScroll) window.scrollTo(0, y);
+}
+
+/* ---- hub ---- */
+function hub(main) {
+  main.append(h("h2", { class: "title" }, "Application Sections"));
+  const o = App.overall();
+  main.append(h("div", { class: "note" }, "Open any section in any order. " + o.done + " of " + o.total + " required questions answered."));
+  const cards = h("div", { class: "cards" });
+  SECTIONS.forEach(s => {
+    const st = App.stats(s);
+    cards.append(h("div", { class: "card " + st.status },
+      h("div", { style: "display:flex;align-items:center;gap:8px" }, h("h3", {}, s.title), h("span", { class: "badge " + st.status, style: "margin-left:auto" }, App.label[st.status])),
+      h("div", { class: "meta" }, h("b", {}, st.missing.length), " incomplete question" + (st.missing.length === 1 ? "" : "s")),
+      h("div", { class: "meta" }, h("b", {}, st.later), " marked for later research"),
+      h("div", { class: "progress" }, h("i", { style: "width:" + (st.total ? Math.round(100 * st.done / st.total) : 0) + "%" })),
+      h("button", { class: "rbtn", onclick: () => go("section", s.id) }, st.status === "todo" ? "Open section" : "Open section")));
+  });
+  const pend = App.pendingAll().length;
+  cards.append(h("div", { class: "card " + (pend ? "part" : "done") },
+    h("h3", {}, "Information I Still Need"),
+    h("div", { class: "meta" }, h("b", {}, needsCount()), " item" + (needsCount() === 1 ? "" : "s") + " marked for research"),
+    h("div", { class: "meta" }, h("b", {}, pend), " required question" + (pend === 1 ? "" : "s") + " unanswered overall"),
+    h("button", { class: "rbtn", onclick: () => go("needs") }, "View list")));
+  main.append(cards);
+}
+
+/* ---- section ---- */
+function section(main) {
+  const s = SECTIONS.find(x => x.id === current);
+  main.append(h("h2", { class: "title" }, s.title));
+  main.append(h("div", { class: "topnav", style: "margin:0 0 10px" }, h("button", { class: "link", onclick: () => go("hub") }, "◀ Back to Section Hub")));
+  if (s.note) main.append(h("div", { class: "note" }, "NOTE: " + s.note));
+  const box = h("div", { class: "panel" });
+  main.append(box);
+  App.renderSection(box, s, { extra: laterUI });
+  main.append(h("div", { class: "btnbar" },
+    h("button", { class: "rbtn l", onclick: () => go("hub") }, "◀ Section Hub"),
+    h("button", { class: "rbtn c", onclick: () => { App.save(); go("hub"); } }, "💾 Save and return to hub"),
+    h("button", { class: "rbtn r", onclick: () => go("needs") }, "Information I Still Need ▶")));
+}
+
+/* "Research Later" control shown with each question */
+function laterUI(f) {
+  const item = L[f.id];
+  const ans = App.answered(f);
+  if (editing === f.id) {
+    const ta = h("textarea", { rows: 2, "aria-label": "Note", placeholder: "Add a short note (optional)" }, item ? item.note : "");
+    return h("div", { class: "later" }, h("div", { class: "box" }, "Note for this question:", h("br"), ta,
+      h("div", { style: "margin-top:6px;display:flex;gap:8px" },
+        h("button", { class: "sbtn fill", onclick: () => { L[f.id] = { note: ta.value.trim(), resolved: false }; editing = null; App.save(); render(true); } }, "Save note"),
+        h("button", { class: "sbtn", onclick: () => { editing = null; render(true); } }, "Cancel"))));
+  }
+  if (!item) return h("div", { class: "later" }, h("button", { class: "sbtn", onclick: () => { editing = f.id; render(true); setTimeout(() => App.jump(f.id), 30); } }, "Research Later"));
+  return h("div", { class: "later" }, h("div", { class: "box" },
+    item.resolved ? h("b", { style: "color:var(--ok)" }, "✔ Resolved") : h("b", {}, "Marked for later research"),
+    item.note ? h("div", {}, "Note: " + item.note) : null,
+    h("div", { style: "margin-top:6px;display:flex;gap:8px;flex-wrap:wrap" },
+      !item.resolved ? h("button", { class: "sbtn", onclick: () => { editing = f.id; render(true); } }, "Edit note") : null,
+      !item.resolved && ans ? h("button", { class: "sbtn fill", onclick: () => resolve(f.id) }, "Mark resolved") : null,
+      !item.resolved ? h("button", { class: "sbtn", onclick: () => { delete L[f.id]; App.save(); render(true); } }, "Remove") : null)));
+}
+function resolve(id) { L[id].resolved = true; App.save(); render(true); }
+
+/* ---- Information I Still Need ---- */
+function needs(main) {
+  main.append(h("h2", { class: "title" }, "Information I Still Need"));
+  const ids = Object.keys(L).filter(id => App.findField(id));
+  const tbl = h("table", { class: "t" }, h("thead", {}, h("tr", {}, ["Question", "Section", "My note", "Status", "Actions"].map(t => h("th", {}, t)))));
+  const tb = h("tbody");
+  ids.sort((a, b) => (L[a].resolved - L[b].resolved)).forEach(id => {
+    const { section, field } = App.findField(id), it = L[id], ans = App.answered(field);
+    tb.append(h("tr", {},
+      h("td", {}, field.label),
+      h("td", {}, section.title),
+      h("td", {}, it.note || h("i", { style: "color:#888" }, "No note")),
+      h("td", {}, h("span", { class: "badge " + (it.resolved ? "done" : "part") }, it.resolved ? "Resolved" : ans ? "Answered" : "Open")),
+      h("td", { style: "white-space:nowrap" },
+        h("button", { class: "sbtn", onclick: () => go("section", section.id, id) }, "Go to question"), " ",
+        !it.resolved && ans ? h("button", { class: "sbtn fill", onclick: () => resolve(id) }, "Mark resolved") : null)));
+  });
+  if (!ids.length) tb.append(h("tr", {}, h("td", { colspan: 5, style: "color:#666" }, "Nothing is marked for later research. Use \"Research Later\" next to a question inside any section.")));
+  tbl.append(tb);
+  main.append(h("div", { class: "panel" }, tbl));
+
+  const others = App.pendingAll().filter(x => !laterOpen(x.field) && !(L[x.field.id] && L[x.field.id].resolved));
+  main.append(h("h3", { style: "font:22px Georgia,serif;color:#1f2d5a;margin:20px 0 8px" }, "Other unanswered required questions"));
+  const ul = h("ul", { class: "pending" });
+  others.forEach(x => ul.append(h("li", {}, h("div", {}, x.field.label, h("small", {}, x.section.title)), h("button", { class: "sbtn", onclick: () => go("section", x.section.id, x.field.id) }, "Go to question"))));
+  if (!others.length) ul.append(h("li", {}, "None."));
+  main.append(h("div", { class: "panel" }, ul));
+
+  const text = () => "Information I still need — DS-160 (fictional applicant)\n" +
+    ids.filter(id => !L[id].resolved).map(id => { const x = App.findField(id); return "- " + x.field.label + " [" + x.section.title + "]" + (L[id].note ? " — " + L[id].note : ""); }).join("\n");
+  const msg = h("span", { role: "status", style: "color:var(--ok);font-weight:700;margin-left:10px" });
+  main.append(h("div", { style: "margin-top:14px;display:flex;gap:8px;align-items:center" },
+    h("button", { class: "rbtn auto", style: "padding:8px 16px", onclick: () => { (navigator.clipboard ? navigator.clipboard.writeText(text()) : Promise.reject()).then(() => msg.textContent = "List copied.", () => msg.textContent = "Copy is unavailable in this browser."); } }, "Copy list"),
+    h("button", { class: "rbtn auto", style: "padding:8px 16px", onclick: () => window.print() }, "Print list"), msg));
+}
+render();
+</script>
+</body>
+</html>
