@@ -12,10 +12,9 @@
 <main class="landing" style="max-width:1440px;margin:0 auto">
   <h1>DS-160 Usability Redesign — HCI Prototype</h1>
   <p style="font-size:17px;max-width:760px">This prototype explores three alternative ways to improve the experience of completing a long government form across multiple sessions.</p>
+  <div class="cards" id="final" style="grid-template-columns:1fr"></div>
   <div class="cards" id="cards"></div>
-  <p style="margin-top:28px;font-size:13px"><button class="link" id="finish">Finish study and copy combined results</button></p>
 </main>
-<script src="shared/metrics.js"></script>
 <script>
 /* Card order is shuffled once per browser and then kept, so a participant sees a stable order on every visit.
    Researcher reset: open index.html?reset=1 (clears order and all saved answers). */
@@ -38,7 +37,11 @@ if (!Array.isArray(order) || order.length !== 3) {
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
   try { localStorage.setItem(OKEY, JSON.stringify(order)); } catch (e) {}
 }
-document.getElementById("finish").onclick = () => Metrics.showSummary(Metrics.combined(), "Combined study results");
+/* Row 1: the final hybrid prototype (fixed position). Row 2: the three designs in this browser's shuffled order. */
+const fin = document.createElement("a");
+fin.className = "card"; fin.href = "option4-hybrid.html";
+fin.innerHTML = '<span class="num">Final Prototype</span><h3>Single Page with Pending Items</h3><div class="meta">A single consolidated form with an outline, a pending-items panel, and one fixed place to review and submit.</div>';
+document.getElementById("final").append(fin);
 const box = document.getElementById("cards");
 order.forEach(n => {
   const d = DESIGNS.find(x => x.n === n);

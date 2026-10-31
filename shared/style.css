@@ -174,3 +174,28 @@ table.t td { padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
 
 @media (max-width: 1000px) { .cards { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } }
+
+/* ---------- hybrid (option 4) ---------- */
+.row.unans { border-left: 4px solid var(--warn); background: #fffaf0; padding-left: 12px; }
+.unans-tag { display: inline-block; font: 700 11px var(--sans); color: #8a5300; background: #ffe9b8; padding: 1px 7px; border-radius: 3px; margin-bottom: 4px; }
+.rside { width: 300px; flex: none; padding-top: 18px; position: sticky; top: 0; max-height: 100vh; overflow: auto; padding-bottom: 80px; }
+.pbox { border: 1px solid #ccc; background: #fff; }
+.pbox h3 { font: 20px var(--serif); color: var(--navy-text); margin: 0; padding: 10px 12px; background: #e9eef7; display: flex; align-items: center; gap: 8px; }
+.pbox h3 .badge { margin-left: auto; }
+.pbox .pbody { padding: 8px 12px 12px; }
+.pgroup { margin-top: 10px; font: 700 13px var(--sans); color: #333; display: flex; justify-content: space-between; }
+.pitem { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 4px; margin-top: 2px; font: 14px var(--sans); color: #1a4fb4; cursor: pointer; border-bottom: 1px dotted #ccc; }
+.pitem:hover, .pitem:focus-visible { background: #eef3fb; }
+.pitem small { display: block; color: #6b5200; font-style: italic; }
+.nav button .cnt { margin-left: auto; font-weight: 400; font-size: 11px; }
+.nav button.cur { outline: 3px solid var(--navy); outline-offset: -3px; }
+.cpanel { scroll-margin-top: 12px; }
+.row { scroll-margin-top: 90px; scroll-margin-bottom: 90px; }
+.actionbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: #f2f2f2; border-top: 2px solid var(--red); }
+.actionbar > div { max-width: 1440px; margin: 0 auto; padding: 8px 24px; display: flex; align-items: center; gap: 12px; }
+.actionbar .grow { flex: 1; }
+.actionbar .rbtn { flex: none; padding: 9px 22px; }
+body.has-bar { padding-bottom: 64px; }
+.rnote { margin-top: 6px; font-size: 13px; }
+.rnote textarea { width: 100%; max-width: 420px; font: 13px var(--sans); padding: 4px; border: 1px solid #777; }
+@media (max-width: 1100px) { .shell { flex-wrap: wrap; } .rside { width: 100%; position: static; max-height: none; padding-bottom: 0; } }

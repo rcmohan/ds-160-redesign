@@ -226,8 +226,9 @@ const App = (() => {
       if (f.group) lastGroup = f.group;
       const miss = state.showMissing && needed(f) && !answered(f);
       const hit = opts.hit && opts.hit.has(f.id);
-      box.append(h("div", { class: "row" + (f.help ? "" : " nohelp") + (miss ? " missing" : "") + (hit ? " hit" : ""), id: "row_" + f.id },
-        h("div", {}, control(f), miss ? h("div", { class: "req-flag", role: "alert" }, opts.flagText || "This question is required.") : null, opts.extra ? opts.extra(f) : null),
+      const un = opts.persist && needed(f) && !answered(f);
+      box.append(h("div", { class: "row" + (f.help ? "" : " nohelp") + (miss ? " missing" : "") + (hit ? " hit" : "") + (un ? " unans" : ""), id: "row_" + f.id },
+        h("div", {}, un ? h("div", { class: "unans-tag" }, "● Unanswered") : null, control(f), miss ? h("div", { class: "req-flag", role: "alert" }, opts.flagText || "This question is required.") : null, opts.extra ? opts.extra(f) : null),
         h("aside", { class: "help" }, f.help ? [h("b", {}, "Help: " + f.help[0]), f.help[1]] : null)));
     });
   }
@@ -239,11 +240,11 @@ const App = (() => {
     const i = el.querySelector("input:not([disabled]),select"); if (i) i.focus({ preventScroll: true });
     setTimeout(() => el.classList.remove("flash"), 1700);
   }
-  function chrome(design, extraUtil) {
+  function chrome(design, opts = {}) {
     document.getElementById("chrome").innerHTML =
       `<div class="proto-banner">Academic Usability Prototype &mdash; Not a Government Website. Fictional applicant data only.</div>
        <div class="hdr"><div class="logo">LOGO</div><div><h1>Consular Electronic Application Center</h1><small>U.S. DEPARTMENT of STATE</small></div>
-        <div class="util"><a class="returnbtn" href="index.html">&larr; Return to Design Options</a><span id="utilslot"></span></div></div>
+        <div class="util">${opts.standalone ? "" : '<a class="returnbtn" href="index.html">&larr; Return to Design Options</a>'}<span id="utilslot"></span></div></div>
        <div class="tabs"><div class="on">COMPLETE</div><div>REVIEW</div><div>SIGN</div></div>
        <div class="apptitle">Online Nonimmigrant Visa Application (DS-160) <span>Application ID: FICT-0001</span><span class="designtag">${design}</span></div>`;
     document.getElementById("footer").innerHTML =

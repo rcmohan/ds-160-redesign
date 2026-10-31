@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Final Prototype — Single Page with Pending Items</title>
+<link rel="stylesheet" href="shared/style.css">
+</head>
+<body class="has-bar">
+<div id="chrome"></div>
+<div id="app-wrap"><div id="app"></div></div>
+<div id="footer"></div>
+<script src="shared/app.js"></script>
+<script src="shared/metrics.js"></script>
+<script>
+/* Final prototype: Option 2's single page + outline, with Option 3's pending-item tracking.
+   1) Unanswered required questions are always marked in the form, outline and header badges.
+   2) A pending-items panel links straight to each field.
+   3) Review and Submit lives in one fixed action bar.
+   4) Edits never re-flow the page, and every jump lands in the same screen position. */
+const { h } = App;
+const root = document.getElementById("app");
+const resumed = App.init("option4");
+App.chrome("Final Prototype");
+Metrics.init("option4", { finishLabel: "Finish study and copy results" });
+const indicator = App.saveIndicator();
+const L = App.answers._later;                      // optional per-question notes: { fieldId: { note } }
+
+if (!App.meta.open) { App.meta.open = {}; SECTIONS.forEach(s => App.meta.open[s.id] = App.stats(s).status !== "done"); }
+let hit = new Set(), editingNote = null, cursor = null, curSection = SECTIONS[0].id;
+
+const outline = h("nav", { class: "side", "aria-label": "Application outline" });
+const main = h("div", { class: "main" });
+const rside = h("aside", { class: "rside", "aria-label": "Pending items" });
+root.append(h("div", { class: "shell" }, outline, main, rside));
+
+const searchInput = h("input", { type: "text", id: "q", placeholder: "Type to search all questions and answers", autocomplete: "off", "aria-label": "Find a question or answer" });
+const results = h("div", { class: "results", hidden: true });
+const panelsBox = h("div");
+const bodies = {}, heads = {};
+main.append(
+  h("div", { class: "search" }, h("label", { class: "lbl", for: "q", style: "font-weight:700" }, "Find a question or answer"), searchInput, results),
+  h("h2", { class: "title" }, "Online Nonimmigrant Visa Application"),
+  panelsBox);
+
+/* ---- fixed action bar: the one place for save / pending / review ---- */
+const pendBtn = h("button", { class: "sbtn", onclick: () => nextPending() });
+const bar = h("div", { class: "actionbar" }, h("div", {},
+  indicator, h("span", { class: "grow" }), pendBtn,
+  h("button", { class: "rbtn", style: "background:#fff;color:var(--red);border:1px solid var(--red)", onclick: () => App.save() }, "💾 Save"),
+  h("button", { class: "rbtn", onclick: openReview }, "Review and Submit ▶")));
+document.body.append(bar);
+
+/* ---- panels ---- */
+SECTIONS.forEach(s => {
+  const body = h("div", { class: "cbody" });
+  const head = h("button", { class: "chead", "aria-expanded": "false", onclick: () => toggle(s.id) });
+  bodies[s.id] = body; heads[s.id] = head;
+  panelsBox.append(h("section", { class: "cpanel", id: "sec_" + s.id }, h("h3", { style: "margin:0" }, head), body));
+});
+const sec = id => SECTIONS.find(s => s.id === id);
+const badgeText = st => st.missing.length ? st.missing.length + " unanswered" : App.label[st.status];
+
+function drawPanel(s) {
+  const open = !!App.meta.open[s.id], st = App.stats(s);
+  const head = heads[s.id];
+  head.setAttribute("aria-expanded", open);
+  head.innerHTML = "";
+  head.append(h("span", { class: "caret" }, open ? "▼" : "▶"), s.title, h("span", { class: "badge " + st.status }, badgeText(st)));
+  bodies[s.id].hidden = !open;
+  if (!open) return;
+  bodies[s.id].innerHTML = "";
+  if (s.note) bodies[s.id].append(h("div", { class: "note" }, "NOTE: " + s.note));
+  const box = h("div", { class: "panel" });
+  bodies[s.id].append(box);
+  App.renderSection(box, s, { hit, persist: true, extra: noteUI });
+}
+
+/* optional note on an unanswered question, shown again in the pending panel */
+function noteUI(f) {
+  if (App.answered(f) || !f.required) return null;
+  const n = L[f.id];
+  if (editingNote === f.id) {
+    const ta = h("textarea", { rows: 2, "aria-label": "Note for this question", placeholder: "e.g., Ask family member" }, n ? n.note : "");
+    return h("div", { class: "rnote" }, ta, h("div", { style: "margin-top:4px;display:flex;gap:6px" },
+      h("button", { class: "sbtn fill", onclick: () => { const v = ta.value.trim(); v ? L[f.id] = { note: v } : delete L[f.id]; editingNote = null; App.save(); refresh(); } }, "Save note"),
+      h("button", { class: "sbtn", onclick: () => { editingNote = null; refresh(); } }, "Cancel")));
+  }
+  return h("div", { class: "rnote" }, n ? ["Note: " + n.note + " "] : null,
+    h("button", { class: "link", onclick: () => { editingNote = f.id; refresh(); setTimeout(() => { const t = document.querySelector("#row_" + f.id + " textarea"); if (t) t.focus({ preventScroll: true }); }, 30); } }, n ? "Edit note" : "Add a note for later"));
+}
+
+function drawOutline() {
+  outline.innerHTML = "";
+  const o = App.overall(), pend = App.pendingAll().length;
+  outline.append(h("div", { style: "font-size:13px;color:#444" }, o.pct + "% answered · " + pend + " pending"), h("div", { class: "progress" }, h("i", { style: "width:" + o.pct + "%" })));
+  const ul = h("ul", { class: "nav" });
+  SECTIONS.forEach(s => {
+    const st = App.stats(s);
+    ul.append(h("li", {}, h("button", { "data-sec": s.id, class: (st.status === "done" ? "" : st.status === "part" ? "part" : "todo") + (s.id === curSection ? " cur" : ""), onclick: () => goTo(s.id) },
+      h("span", { class: "ic" }, st.status === "done" ? "✔" : st.status === "part" ? "●" : ""), h("span", {}, s.short),
+      h("span", { class: "cnt" }, st.missing.length ? st.missing.length + " left" : "Done"))));
+  });
+  outline.append(ul, h("div", { style: "display:flex;gap:6px;margin-top:12px" },
+    h("button", { class: "sbtn", onclick: () => setAll(true) }, "Expand all"), h("button", { class: "sbtn", onclick: () => setAll(false) }, "Collapse all")));
+}
+
+/* pending-items summary */
+function drawPending() {
+  rside.innerHTML = "";
+  const all = App.pendingAll();
+  pendBtn.textContent = all.length ? all.length + " pending — go to next" : "No pending items";
+  pendBtn.disabled = !all.length;
+  const box = h("div", { class: "pbox" }, h("h3", {}, "Pending items", h("span", { class: "badge " + (all.length ? "part" : "done") }, String(all.length))));
+  const body = h("div", { class: "pbody" });
+  if (!all.length) body.append(h("p", { style: "margin:8px 0" }, "All required questions are answered."), h("button", { class: "rbtn", style: "width:100%", onclick: openReview }, "Review and Submit"));
+  else {
+    body.append(h("button", { class: "rbtn", style: "width:100%;margin-top:6px", onclick: () => nextPending() }, "Go to next unanswered ▶"));
+    SECTIONS.forEach(s => {
+      const m = App.stats(s).missing; if (!m.length) return;
+      body.append(h("div", { class: "pgroup" }, h("span", {}, s.short), h("span", {}, String(m.length))));
+      m.forEach(f => body.append(h("button", { class: "pitem", onclick: () => goTo(s.id, f.id) }, f.label, L[f.id] ? h("small", {}, "Note: " + L[f.id].note) : null)));
+    });
+  }
+  box.append(body); rside.append(box);
+}
+
+/* ---- keeping the view stable ---- */
+function drawAll() { SECTIONS.forEach(drawPanel); drawOutline(); drawPending(); }
+function refresh() { const y = window.scrollY; drawAll(); window.scrollTo(0, y); }      // redraw without moving the page
+App.state.onChange = refresh;
+/* typing: update marks and counters in place, never rebuild the field being edited */
+App.state.onInput = () => {
+  SECTIONS.forEach(s => {
+    const st = App.stats(s), b = heads[s.id].querySelector(".badge");
+    if (b) { b.className = "badge " + st.status; b.textContent = badgeText(st); }
+    s.fields.forEach(f => {
+      const row = document.getElementById("row_" + f.id); if (!row) return;
+      const un = f.required && App.visible(f) && !App.answered(f), tag = row.querySelector(".unans-tag");
+      row.classList.toggle("unans", un);
+      if (!un && tag) tag.remove();
+    });
+  });
+  drawOutline(); drawPending();
+};
+
+/* one scroll rule for every jump: target lands just below the top edge (see scroll-margin in CSS) */
+function scrollToEl(el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+function goTo(id, fieldId) {
+  Metrics.nav(); Metrics.view(id);
+  const wasOpen = App.meta.open[id];
+  App.meta.open[id] = true;
+  if (!wasOpen) { App.save(); drawPanel(sec(id)); drawOutline(); }
+  if (fieldId) {
+    cursor = fieldId;
+    const row = document.getElementById("row_" + fieldId);
+    if (row) {
+      scrollToEl(row); row.classList.add("flash");
+      const i = row.querySelector("input:not([disabled]),select"); if (i) i.focus({ preventScroll: true });
+      setTimeout(() => row.classList.remove("flash"), 1700);
+    }
+  } else scrollToEl(document.getElementById("sec_" + id));
+}
+function nextPending() {
+  const all = App.pendingAll(); if (!all.length) return;
+  let i = all.findIndex(x => x.field.id === cursor);
+  i = i < 0 ? 0 : (i + 1) % all.length;
+  goTo(all[i].section.id, all[i].field.id);
+}
+function toggle(id) { Metrics.nav(); App.meta.open[id] = !App.meta.open[id]; if (App.meta.open[id]) Metrics.view(id); App.save(); drawPanel(sec(id)); }
+function setAll(v) { Metrics.nav(); SECTIONS.forEach(s => App.meta.open[s.id] = v); App.save(); refresh(); }
+
+/* current section follows the scroll position */
+let ticking = false;
+window.addEventListener("scroll", () => {
+  if (ticking) return; ticking = true;
+  requestAnimationFrame(() => {
+    ticking = false;
+    let cur = SECTIONS[0].id;
+    SECTIONS.forEach(s => { const el = document.getElementById("sec_" + s.id); if (el && el.getBoundingClientRect().top <= 140) cur = s.id; });
+    if (cur !== curSection) { curSection = cur; outline.querySelectorAll("button[data-sec]").forEach(b => b.classList.toggle("cur", b.dataset.sec === cur)); }
+  });
+}, { passive: true });
+
+/* ---- search ---- */
+function runSearch(jumpFirst) {
+  const q = searchInput.value.trim();
+  results.innerHTML = "";
+  if (!q) { results.hidden = true; if (hit.size) { hit = new Set(); refresh(); } return; }
+  const r = App.search(q);
+  results.hidden = false;
+  if (!r.length) { results.append(h("div", { class: "none" }, "No matching questions or answers.")); return; }
+  r.slice(0, 8).forEach(x => {
+    const ans = App.answerText(x.field);
+    results.append(h("button", { onclick: () => { hit = new Set([x.field.id]); results.hidden = true; App.meta.open[x.section.id] = true; refresh(); goTo(x.section.id, x.field.id); } },
+      x.field.label, h("br"), h("small", {}, x.section.title + (ans ? " · Answer: " + ans : " · Not answered"))));
+  });
+  if (jumpFirst) { const t = r[0]; hit = new Set([t.field.id]); results.hidden = true; App.meta.open[t.section.id] = true; refresh(); goTo(t.section.id, t.field.id); }
+}
+searchInput.addEventListener("input", () => runSearch(false));
+searchInput.addEventListener("keydown", e => { if (e.key === "Enter") runSearch(true); if (e.key === "Escape") results.hidden = true; });
+document.addEventListener("click", e => { if (!e.target.closest(".search")) results.hidden = true; });
+
+/* ---- review and submit (dialog: opening it never moves the page) ---- */
+function openReview() {
+  const pend = App.pendingAll();
+  Metrics.nav(); if (pend.length) Metrics.validation();
+  let done = false;
+  const scrim = h("div", { class: "scrim", onclick: e => { if (e.target === scrim) scrim.remove(); } });
+  function draw() {
+    scrim.innerHTML = "";
+    const m = h("div", { class: "modal", role: "dialog", "aria-labelledby": "rt", style: "max-width:560px" }, h("h3", { id: "rt" }, "Review and Submit"));
+    if (done) m.append(h("p", { style: "color:var(--ok);font-weight:700" }, "Simulated submission complete. No data was sent anywhere."));
+    else if (!pend.length) m.append(h("p", {}, "All required questions are answered."));
+    else {
+      m.append(h("p", {}, pend.length + " required question" + (pend.length > 1 ? "s" : "") + " still need an answer. Select one to go to it."));
+      SECTIONS.forEach(s => {
+        const ms = pend.filter(x => x.section.id === s.id); if (!ms.length) return;
+        m.append(h("div", { class: "pgroup" }, h("span", {}, s.title), h("span", {}, String(ms.length))));
+        ms.forEach(x => m.append(h("button", { class: "pitem", onclick: () => { scrim.remove(); goTo(s.id, x.field.id); } }, x.field.label, L[x.field.id] ? h("small", {}, "Note: " + L[x.field.id].note) : null)));
+      });
+    }
+    m.append(h("div", { class: "btnbar" },
+      h("button", { class: "rbtn c", onclick: () => scrim.remove() }, done ? "Close" : "Keep editing"),
+      done ? null : h("button", { class: "rbtn c", disabled: pend.length > 0, title: pend.length ? "Answer the pending questions first" : null, style: pend.length ? "opacity:.45;cursor:not-allowed" : "", onclick: () => { done = true; draw(); } }, "Submit Application")));
+    scrim.append(m);
+  }
+  draw(); document.body.append(scrim);
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") { const s = document.querySelector(".scrim"); if (s) s.remove(); } });
+
+/* ---- return to the same place after an interruption ---- */
+const SK = "ds160-scroll-option4";
+window.addEventListener("pagehide", () => { try { localStorage.setItem(SK, String(window.scrollY)); } catch (e) {} });
+drawAll();
+SECTIONS.forEach(s => { if (App.meta.open[s.id]) Metrics.view(s.id); });
+try {
+  const y = parseFloat(localStorage.getItem(SK));
+  if (resumed && y > 0) requestAnimationFrame(() => window.scrollTo(0, y));
+  if (!resumed) localStorage.removeItem(SK);
+} catch (e) {}
+</script>
+</body>
+</html>

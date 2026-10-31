@@ -3,13 +3,14 @@
 const Metrics = (() => {
   const CORRECT_PASSPORT = "G4821935";      // value participants are told to enter for task 2
   const IDLE_CAP_MS = 30000;                // time between interactions beyond this is treated as idle
-  const NAMES = { option1: "wizard", option2: "outline", option3: "hub" };
-  let key = null, m = null, last = Date.now();
+  const NAMES = { option1: "wizard", option2: "outline", option3: "hub", option4: "hybrid" };
+  let key = null, m = null, last = Date.now(), finishLabel = "";
 
   const load = k => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } };
   const persist = () => { try { localStorage.setItem(key, JSON.stringify(m)); } catch (e) {} };
 
-  function init(design) {
+  function init(design, opts = {}) {
+    finishLabel = opts.finishLabel || "Finish and copy my results";
     key = "ds160-metrics-" + design;
     m = load(key) || { design: NAMES[design] || design, pageLoads: 0, ms: 0, nav: 0, validation: 0, tasks: {}, returned: false, viewedPrev: false };
     m.pageLoads++;
@@ -84,7 +85,7 @@ const Metrics = (() => {
   }
   function mountFooter() {
     const f = document.querySelector("#footer .footer"); if (!f) return;
-    f.append(document.createTextNode("   "), el("button", { class: "link", onclick: () => { check(); showSummary(Object.assign({ design: m.design }, summary(key)), "Finish this design"); } }, "Finish and copy my results"));
+    f.append(document.createTextNode("   "), el("button", { class: "link", onclick: () => { check(); showSummary(Object.assign({ design: m.design }, summary(key)), "Finish this design"); } }, finishLabel));
   }
   return { init, nav, view, validation, returned, check, combined, showSummary, summary };
 })();
