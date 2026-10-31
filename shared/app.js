@@ -60,7 +60,7 @@ const SECTIONS = [
   { id: "passport", title: "Passport Information", short: "Passport", note: "Provide the following passport information.",
     fields: [
       { id: "ptype", type: "select", label: "Passport/Travel Document Type", options: ["", "REGULAR", "OFFICIAL", "DIPLOMATIC", "OTHER"], required: true },
-      { id: "pnum", type: "text", label: "Passport/Travel Document Number", required: true, help: ["Passport Number", "Enter the number exactly as it appears in the passport."] },
+      { id: "pnum", type: "text", label: "Passport/Travel Document Number", eg: "e.g., A12345678. May contain letters and numbers", required: true, help: ["Passport Number", "Enter the number exactly as it appears in the passport, including any letters. Many newer passports start with a letter."] },
       { id: "pcountry", type: "select", label: "Country/Authority that Issued Passport/Travel Document", options: COUNTRIES, required: true },
       { id: "pcity", type: "text", label: "City where Issued", required: true },
       { id: "pissue", type: "date", label: "Issuance Date", required: true },

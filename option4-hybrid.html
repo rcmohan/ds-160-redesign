@@ -209,18 +209,29 @@ function openReview() {
   const scrim = h("div", { class: "scrim", onclick: e => { if (e.target === scrim) scrim.remove(); } });
   function draw() {
     scrim.innerHTML = "";
-    const m = h("div", { class: "modal", role: "dialog", "aria-labelledby": "rt", style: "max-width:560px" }, h("h3", { id: "rt" }, "Review and Submit"));
+    const m = h("div", { class: "modal", role: "dialog", "aria-labelledby": "rt", style: "max-width:760px" }, h("h3", { id: "rt" }, "Review and Submit"));
     if (done) m.append(h("p", { style: "color:var(--ok);font-weight:700" }, "Simulated submission complete. No data was sent anywhere."));
-    else if (!pend.length) m.append(h("p", {}, "All required questions are answered."));
     else {
-      m.append(h("p", {}, pend.length + " required question" + (pend.length > 1 ? "s" : "") + " still need an answer. Select one to go to it."));
+      m.append(h("p", { style: pend.length ? "color:var(--red)" : "" }, pend.length
+        ? pend.length + " required question" + (pend.length > 1 ? "s" : "") + " still need an answer. Select Answer to go to it."
+        : "All required questions are answered. Please check your answers below before submitting."));
+      /* every answer, by section, each with a direct link back to the field */
       SECTIONS.forEach(s => {
-        const ms = pend.filter(x => x.section.id === s.id); if (!ms.length) return;
-        m.append(h("div", { class: "pgroup" }, h("span", {}, s.title), h("span", {}, String(ms.length))));
-        ms.forEach(x => m.append(h("button", { class: "pitem", onclick: () => { scrim.remove(); goTo(s.id, x.field.id); } }, x.field.label, L[x.field.id] ? h("small", {}, "Note: " + L[x.field.id].note) : null)));
+        const st = App.stats(s);
+        const tb = h("tbody");
+        s.fields.filter(App.visible).forEach(f => {
+          const ans = App.answerText(f), miss = f.required && !App.answered(f);
+          tb.append(h("tr", { style: miss ? "background:#fffaf0" : "" },
+            h("td", { style: "width:46%" }, f.label),
+            h("td", {}, ans ? ans : h("i", { style: miss ? "color:#8a5300;font-weight:700" : "color:#888" }, miss ? "Not answered" : "Not provided")),
+            h("td", { style: "text-align:right;white-space:nowrap" }, h("button", { class: "sbtn" + (miss ? " fill" : ""), onclick: () => { scrim.remove(); goTo(s.id, f.id); } }, miss ? "Answer" : "Edit"))));
+        });
+        m.append(h("div", { style: "display:flex;align-items:center;gap:10px;margin:16px 0 6px" },
+          h("b", { style: "font:18px Georgia,serif;color:var(--navy-text)" }, s.title), h("span", { class: "badge " + st.status }, badgeText(st))),
+          h("table", { class: "t" }, tb));
       });
     }
-    m.append(h("div", { class: "btnbar" },
+    m.append(h("div", { class: "btnbar", style: "position:sticky;bottom:-22px" },
       h("button", { class: "rbtn c", onclick: () => scrim.remove() }, done ? "Close" : "Keep editing"),
       done ? null : h("button", { class: "rbtn c", disabled: pend.length > 0, title: pend.length ? "Answer the pending questions first" : null, style: pend.length ? "opacity:.45;cursor:not-allowed" : "", onclick: () => { done = true; draw(); } }, "Submit Application")));
     scrim.append(m);
